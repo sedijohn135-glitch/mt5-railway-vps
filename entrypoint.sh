@@ -63,7 +63,6 @@ websockify --web /usr/share/novnc 0.0.0.0:$PORT localhost:5900 &
 WEBSOCKIFY_PID=$!
 sleep 2
 
-# Verify websockify is listening
 if kill -0 $WEBSOCKIFY_PID 2>/dev/null; then
     echo "[entrypoint] websockify running on PID $WEBSOCKIFY_PID"
     echo "Web UI: http://0.0.0.0:$PORT" >> "$STATUS_FILE"
@@ -80,37 +79,26 @@ fi
         MT5_PATH="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe"
         if [ ! -f "$MT5_PATH" ]; then
             echo "[entrypoint-bg] ============================================"
-            echo "[entrypoint-bg] MT5 not found, starting installer..."
-            echo "[entrypoint-bg] Click through the wizard in your browser"
+            echo "[entrypoint-bg] MT5 not found, starting auto-install..."
             echo "[entrypoint-bg] ============================================"
-            echo "MT5 install: in progress" >> "$STATUS_FILE"
+            echo "MT5 install: starting (auto-mode)" >> "$STATUS_FILE"
 
-            DISPLAY=:0 wine /root/mt5setup.exe &
-            INSTALL_PID=$!
-
-            for i in {1..120}; do
-                if [ -f "$MT5_PATH" ]; then
-                    echo "[entrypoint-bg] MT5 installation detected"
-                    break
-                fi
-                sleep 5
-            done
-
-            kill $INSTALL_PID 2>/dev/null || true
-            sleep 2
-            pkill -f "mt5setup.exe" 2>/dev/null || true
-            wait $INSTALL_PID 2>/dev/null || true
+            # Run the auto-install script
+            bash /root/auto_install.sh
 
             if [ -f "$MT5_PATH" ]; then
-                echo "[entrypoint-bg] MT5 installed, launching terminal..."
-                DISPLAY=:0 wine "$MT5_PATH" &
+                echo "[entrypoint-bg] MT5 installed, ensuring terminal is running..."
+                # Make sure MT5 is running
+                if ! pgrep -f "terminal64.exe" >/dev/null 2>&1; then
+                    DISPLAY=:0 wine "$MT5_PATH" &
+                fi
                 echo "MT5: running" >> "$STATUS_FILE"
             else
                 echo "[entrypoint-bg] MT5 install did not complete"
-                echo "MT5: install incomplete" >> "$STATUS_FILE"
+                echo "MT5: install incomplete - check status.txt" >> "$STATUS_FILE"
             fi
         else
-            echo "[entrypoint-bg] MT5 already installed, launching..."
+            echo "[entrypoint-bg] MT5 already installed, launching terminal..."
             DISPLAY=:0 wine "$MT5_PATH" &
             echo "MT5: running" >> "$STATUS_FILE"
         fi
