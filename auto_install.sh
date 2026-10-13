@@ -1,182 +1,161 @@
 #!/bin/bash
-# Auto-install script: clicks through MT5 install wizard using xdotool
+# Bulletproof auto-install for MT5: disables debugger detection + uses silent + xdotool fallback
 
 LOG=/tmp/auto_install.log
 exec > >(tee -a "$LOG") 2>&1
 
 echo "[auto-install] Starting at $(date)"
 
-# Make sure DISPLAY is set
 export DISPLAY=:0
+export WINEPREFIX=/root/.wine
+export WINEDEBUG=-all
 
-# Click helper function
-click_at() {
-    # click_at X Y — clicks at the given coordinates
-    xdotool mousemove --window $1 $2 $3
-    xdotool click 1
-}
+# Kill any existing installer
+pkill -f mt5setup.exe 2>/dev/null || true
+pkill -f terminal64.exe 2>/dev/null || true
+sleep 2
 
-# Wait for window with title pattern
-wait_for_window() {
-    local pattern="$1"
-    local timeout="${2:-300}"
-    echo "[auto-install] Waiting for window matching: $pattern (timeout ${timeout}s)"
-    for i in $(seq 1 $timeout); do
-        # Try to find window
-        WID=$(xdotool search --name "$pattern" 2>/dev/null | head -1)
-        if [ -n "$WID" ]; then
-            echo "[auto-install] Found window: $WID (after ${i}s)"
-            echo "$WID"
-            return 0
-        fi
+MT5_PATH="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe"
+
+# Step 1: Disable Wine's debugger detection in the Windows registry
+# This is what triggers the "A debugger has been found running" dialog
+echo "[auto-install] Disabling debugger detection in wine registry..."
+DISPLAY=:0 wine reg add "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AeDebug" /v Debugger /t REG_SZ /d "" /f 2>/dev/null || true
+DISPLAY=:0 wine reg add "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\AeDebug" /v Auto /t REG_SZ /d "0" /f 2>/dev/null || true
+
+# Also try via regedit import approach
+cat > /tmp/disable_debugger.reg <<'EOF'
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\AeDebug]
+"Debugger"=""
+"Auto"="0"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\.NETFramework]
+"DbgJITDebugLaunchSetting"=dword:00000001
+"DbgManagedDebugger"=""
+EOF
+
+DISPLAY=:0 wine regedit /tmp/disable_debugger.reg 2>/dev/null || true
+
+# Step 2: Start a background "dialog dismisser" that aggressively clicks OK on any dialog
+(
+    echo "[dialog-dismisser] Started at $(date)"
+    while true; do
+        # Find ALL visible windows
+        for WID in $(xdotool search --name "" 2>/dev/null); do
+            # Get window name
+            NAME=$(xdotool getwindowname $WID 2>/dev/null)
+            if [ -z "$NAME" ]; then
+                continue
+            fi
+            # Check if it's a dialog with OK button
+            if [[ "$NAME" == *"debugger"* ]] || \
+               [[ "$NAME" == *"mt5setup"* ]] || \
+               [[ "$NAME" == *"MetaTrader"* ]] || \
+               [[ "$NAME" == *"Error"* ]] || \
+               [[ "$NAME" == *"Setup"* ]] || \
+               [[ "$NAME" == *"xmessage"* ]]; then
+                echo "[dialog-dismisser] Dismissing: $NAME (wid=$WID)"
+                # Try multiple ways to dismiss
+                xdotool windowactivate --sync $WID 2>/dev/null
+                xdotool key --window $WID Return 2>/dev/null
+                xdotool key --window $WID space 2>/dev/null
+                xdotool key --window $WID Escape 2>/dev/null
+                sleep 0.5
+            fi
+        done
         sleep 1
     done
-    echo "[auto-install] Timeout waiting for: $pattern"
-    return 1
-}
+) &
+DIALOG_PID=$!
 
-# Press a key on a window
-press_key() {
-    local wid="$1"
-    local key="$2"
-    xdotool key --window $wid "$key"
-    sleep 0.5
-}
-
-# Click on a button by text
-click_button() {
-    local wid="$1"
-    local button_text="$2"
-    echo "[auto-install] Looking for button: $button_text"
-    # Try to find button position via xdotool
-    # For NSIS installers, the buttons are at predictable positions
-    # We'll use Tab to navigate and Enter to click
-    xdotool windowactivate --sync $wid
-    sleep 0.5
-    # Try multiple approaches
-    xdotool key --window $wid "alt+$(echo $button_text | cut -c1 | tr '[:upper:]' '[:lower:]')"
-    sleep 0.3
-}
-
-# Kill any running MT5 installer first
-pkill -f mt5setup.exe 2>/dev/null || true
-sleep 2
-
-# Make sure the MT5 setup file exists
+# Step 3: Try silent install first
+echo "[auto-install] Trying silent install (no GUI)..."
 if [ ! -f /root/mt5setup.exe ]; then
-    echo "[auto-install] ERROR: /root/mt5setup.exe not found"
+    echo "[auto-install] ERROR: /root/mt5setup.exe missing"
+    kill $DIALOG_PID 2>/dev/null
     exit 1
 fi
 
-# Try silent install first
-echo "[auto-install] Trying silent install with /S flag..."
-DISPLAY=:0 wine /root/mt5setup.exe /S 2>&1 | tail -5 &
+# Method 1: Silent install with /S
+DISPLAY=:0 wine /root/mt5setup.exe /S 2>&1 | tail -3 &
 INSTALL_PID=$!
 
-# Wait a bit and check if files appeared
-echo "[auto-install] Waiting 30s to see if silent install works..."
-sleep 30
+# Wait up to 5 minutes for silent install to complete
+echo "[auto-install] Waiting up to 5 min for silent install..."
+for i in $(seq 1 150); do
+    if [ -f "$MT5_PATH" ]; then
+        echo "[auto-install] SUCCESS: MT5 installed silently after $((i*2))s"
+        kill $INSTALL_PID 2>/dev/null
+        sleep 2
+        pkill -f mt5setup.exe 2>/dev/null
+        kill $DIALOG_PID 2>/dev/null
+        # Launch MT5
+        DISPLAY=:0 wine "$MT5_PATH" &
+        echo "[auto-install] MT5 launched"
+        exit 0
+    fi
+    sleep 2
+done
 
-MT5_PATH="/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe"
-if [ -f "$MT5_PATH" ]; then
-    echo "[auto-install] SUCCESS: MT5 installed silently"
-    wait $INSTALL_PID 2>/dev/null
-    exit 0
-fi
-
-echo "[auto-install] Silent install didn't work, falling back to GUI auto-click"
+# Method 2: GUI install with xdotool
+echo "[auto-install] Silent install taking too long, falling back to GUI auto-click..."
 
 # Kill silent install
-kill $INSTALL_PID 2>/dev/null || true
-sleep 2
-pkill -f mt5setup.exe 2>/dev/null || true
-sleep 2
-
-# Launch installer with GUI
-echo "[auto-install] Launching installer with GUI for auto-click..."
-DISPLAY=:0 wine /root/mt5setup.exe &
-INSTALL_PID=$!
-
-# Wait for the main installer window
-WID=$(wait_for_window "MetaTrader 5 Setup" 60) || WID=$(wait_for_window "MetaTrader" 60) || WID=$(wait_for_window "Setup" 60)
-if [ -z "$WID" ]; then
-    echo "[auto-install] Could not find installer window, aborting"
-    kill $INSTALL_PID 2>/dev/null
-    exit 1
-fi
-
-# Bring window to front
-xdotool windowactivate --sync $WID
-sleep 2
-
-# Strategy: use Tab + Enter to navigate
-# Most NSIS installers have a default-focused "Next" button
-echo "[auto-install] Pressing Enter to advance from Welcome page..."
-xdotool key --window $WID "Return"
+kill $INSTALL_PID 2>/dev/null
+pkill -f mt5setup.exe 2>/dev/null
 sleep 3
 
-# Click through any "debugger found" error first
-echo "[auto-install] Looking for debugger error dialog..."
-sleep 2
-ERR_WID=$(xdotool search --name "debugger" 2>/dev/null | head -1)
-if [ -n "$ERR_WID" ]; then
-    echo "[auto-install] Found debugger dialog, pressing Enter to dismiss"
-    xdotool key --window $ERR_WID "Return"
-    sleep 2
-fi
+# Launch GUI installer
+DISPLAY=:0 wine /root/mt5setup.exe &
+GUI_PID=$!
 
-# Now we're on the License Agreement page (if any) - press Next
-echo "[auto-install] Step 1: License/Initial page - Next"
-xdotool windowactivate --sync $WID
-sleep 1
-xdotool key --window $WID "alt+n"
-sleep 2
-
-# Settings page - Next
-echo "[auto-install] Step 2: Settings page - Next"
-xdotool key --window $WID "alt+n"
-sleep 2
-
-# Install page - Install
-echo "[auto-install] Step 3: Install page - Install"
-xdotool key --window $WID "alt+i"
-sleep 2
-
-# Wait for installation to complete (1-3 minutes)
-echo "[auto-install] Step 4: Waiting for installation to complete..."
-for i in $(seq 1 180); do
-    if [ -f "$MT5_PATH" ]; then
-        echo "[auto-install] MT5 terminal64.exe detected after ${i}*2 seconds"
+# Wait for installer window
+echo "[auto-install] Waiting for installer window..."
+for i in $(seq 1 60); do
+    WID=$(xdotool search --name "Setup" 2>/dev/null | head -1)
+    if [ -n "$WID" ]; then
+        echo "[auto-install] Found installer window: $WID"
+        break
+    fi
+    WID=$(xdotool search --name "MetaTrader" 2>/dev/null | head -1)
+    if [ -n "$WID" ]; then
+        echo "[auto-install] Found installer window: $WID"
         break
     fi
     sleep 2
 done
 
-# Click Finish
-echo "[auto-install] Step 5: Finish"
-xdotool windowactivate --sync $WID
-sleep 2
-xdotool key --window $WID "alt+f"
-sleep 3
-xdotool key --window $WID "Return"
-sleep 2
+# Click through the wizard: Next, Next, Install, Finish
+for step in 1 2 3 4 5; do
+    echo "[auto-install] Step $step: pressing Enter/Next"
+    if [ -n "$WID" ]; then
+        xdotool windowactivate --sync $WID 2>/dev/null
+        xdotool key --window $WID "alt+n" 2>/dev/null
+        sleep 0.5
+        xdotool key --window $WID "alt+i" 2>/dev/null
+        sleep 0.5
+        xdotool key --window $WID "Return" 2>/dev/null
+    fi
+    sleep 4
+done
 
-# Verify
-if [ -f "$MT5_PATH" ]; then
-    echo "[auto-install] SUCCESS: MT5 installed at $MT5_PATH"
-    # Launch MT5 terminal
-    DISPLAY=:0 wine "$MT5_PATH" &
-    echo "[auto-install] MT5 terminal launched"
-    exit 0
-else
-    echo "[auto-install] FAILED: MT5 not found at $MT5_PATH"
-    # Maybe installer still running, give more time
-    pkill -f mt5setup.exe 2>/dev/null || true
-    sleep 5
+# Final wait for installation to complete
+echo "[auto-install] Final wait for MT5 install..."
+for i in $(seq 1 120); do
     if [ -f "$MT5_PATH" ]; then
-        echo "[auto-install] MT5 found after cleanup, launching"
+        echo "[auto-install] SUCCESS: MT5 installed at $MT5_PATH"
+        # Launch MT5
         DISPLAY=:0 wine "$MT5_PATH" &
+        sleep 2
+        kill $DIALOG_PID 2>/dev/null
         exit 0
     fi
-    exit 1
-fi
+    sleep 2
+done
+
+echo "[auto-install] FAILED: MT5 not installed after 4 minutes"
+echo "[auto-install] Dialog dismisser still running, user can manually click OK"
+# Don't kill dialog dismisser - let user click OK if they want
+exit 1
