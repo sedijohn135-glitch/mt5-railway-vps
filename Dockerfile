@@ -5,7 +5,7 @@ ENV DISPLAY=:0
 ENV WINEPREFIX=/root/.wine
 ENV WINEDEBUG=-all
 
-# Install all dependencies including wine, xdotool for auto-install
+# Install all dependencies including 7z for MT5 extraction
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -13,7 +13,7 @@ RUN dpkg --add-architecture i386 && \
         wget curl ca-certificates \
         xvfb x11vnc novnc websockify \
         fluxbox xterm unzip cabextract x11-utils \
-        xdotool scrot \
+        xdotool scrot p7zip-full \
         wine && \
     rm -rf /var/lib/apt/lists/*
 
@@ -27,10 +27,17 @@ RUN ln -sf /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
 RUN wget -q -O /root/mt5setup.exe \
     "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
 
-# Copy auto-install script
-COPY auto_install.sh /root/auto_install.sh
-RUN chmod +x /root/auto_install.sh
+# Pre-extract MT5 setup.exe during build (bypasses installer wizard entirely)
+# This way, no GUI install, no "debugger found" dialog, no clicks needed
+RUN mkdir -p /root/mt5-extracted && \
+    cd /root/mt5-extracted && \
+    7z x -y /root/mt5setup.exe 2>&1 | tail -5 && \
+    echo "=== Extracted files ===" && \
+    find /root/mt5-extracted -type f | head -20 && \
+    echo "=== Looking for terminal64.exe ===" && \
+    find /root/mt5-extracted -name "terminal64.exe" -o -name "metatrader5*.exe" 2>/dev/null
 
+# Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
