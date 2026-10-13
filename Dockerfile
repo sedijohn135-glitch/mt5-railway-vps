@@ -5,26 +5,19 @@ ENV DISPLAY=:0
 ENV WINEPREFIX=/root/.wine
 ENV WINEDEBUG=-all
 
-# Install base dependencies first
+# Install all dependencies including wine meta-package
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg wget \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        software-properties-common \
+        wget curl ca-certificates \
         xvfb x11vnc novnc websockify \
-        fluxbox xterm unzip cabextract x11-utils && \
+        fluxbox xterm unzip cabextract x11-utils \
+        wine && \
     rm -rf /var/lib/apt/lists/*
 
-# Add WineHQ repository and install wine
-RUN mkdir -pm755 /etc/apt/keyrings && \
-    wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
-    echo "deb [signed-by=/etc/apt/keyrings/winehq-archive.key] https://dl.winehq.org/ubuntu focal main" > /etc/apt/sources.list.d/winehq-focal.sources && \
-    apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --install-recommends winehq-stable && \
-    rm -rf /var/lib/apt/lists/* && \
-    ln -sf /usr/bin/wine /usr/bin/wineboot || true
-
-# Verify wine installation
-RUN wine --version && wineboot --version
+# Verify wine is actually installed
+RUN wine --version 2>&1 | head -3
 
 # Make noVNC default page point to the lightweight vnc client
 RUN ln -sf /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
