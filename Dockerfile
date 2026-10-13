@@ -5,7 +5,7 @@ ENV DISPLAY=:0
 ENV WINEPREFIX=/root/.wine
 ENV WINEDEBUG=-all
 
-# Install all dependencies including 7z for MT5 extraction
+# Install all dependencies
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -27,15 +27,35 @@ RUN ln -sf /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
 RUN wget -q -O /root/mt5setup.exe \
     "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
 
-# Pre-extract MT5 setup.exe during build (bypasses installer wizard entirely)
-# This way, no GUI install, no "debugger found" dialog, no clicks needed
-RUN mkdir -p /root/mt5-extracted && \
-    cd /root/mt5-extracted && \
-    7z x -y /root/mt5setup.exe 2>&1 | tail -5 && \
-    echo "=== Extracted files ===" && \
-    find /root/mt5-extracted -type f | head -20 && \
-    echo "=== Looking for terminal64.exe ===" && \
-    find /root/mt5-extracted -name "terminal64.exe" -o -name "metatrader5*.exe" 2>/dev/null
+# Pre-install MT5 during build (silent install with /S)
+# This avoids the "debugger found" dialog and any user clicks at runtime
+RUN export DISPLAY=:99 && \
+    export WINEPREFIX=/root/.wine-build && \
+    export WINEDEBUG=-all && \
+    Xvfb :99 -screen 0 1024x768x24 +extension RANDR & \
+    XVFB_PID=$! && \
+    sleep 3 && \
+    echo "=== Initializing wine prefix ===" && \
+    wineboot --init 2>&1 | tail -3 && \
+    echo "=== Running silent install (this may take 3-5 min) ===" && \
+    DISPLAY=:99 wine /root/mt5setup.exe /S 2>&1 | tail -3 && \
+    echo "=== Waiting for installation to complete ===" && \
+    for i in $(seq 1 120); do \
+        if [ -f "/root/.wine-build/drive_c/Program Files/MetaTrader 5/terminal64.exe" ]; then \
+            echo "MT5 installed after $((i*5))s"; \
+            break; \
+        fi; \
+        sleep 5; \
+    done && \
+    echo "=== Copying installed files ===" && \
+    cp -r "/root/.wine-build/drive_c/Program Files/MetaTrader 5" /root/mt5-installed/ && \
+    echo "=== Installed files ===" && \
+    ls -la /root/mt5-installed/ | head -10 && \
+    kill $XVFB_PID 2>/dev/null || true && \
+    rm -rf /root/.wine-build
+
+# Verify install succeeded
+RUN test -f /root/mt5-installed/terminal64.exe && echo "BUILD OK: MT5 terminal64.exe is in /root/mt5-installed/" || echo "BUILD WARNING: terminal64.exe not found, will retry at runtime"
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
