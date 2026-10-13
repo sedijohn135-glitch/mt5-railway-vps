@@ -1,5 +1,5 @@
 #!/bin/bash
-# Final entrypoint: pre-installed MT5, no installer needed at runtime
+# Simple entrypoint: just run silent install at runtime with long timeout
 
 LOG=/tmp/entrypoint.log
 exec > >(tee -a "$LOG") 2>&1
@@ -35,23 +35,22 @@ sleep 1
 # Create noVNC status dir
 mkdir -p /usr/share/novnc 2>/dev/null
 STATUS_FILE=/usr/share/novnc/status.txt
-
 cat > "$STATUS_FILE" <<EOF
 MT5 Railway VPS Status
 ======================
 Last update: $(date)
 X server: running
 Window manager: fluxbox
+Wine: $(wine --version 2>&1 | head -1)
 EOF
 
 echo "[entrypoint] Starting x11vnc on :5900..."
 x11vnc -display :0 -nopw -listen localhost -xkb -ncache 10 -forever -noxdamage &
 sleep 2
 
-# Start websockify IMMEDIATELY
+# Start websockify IMMEDIATELY (Railway needs response within seconds)
 PORT=${PORT:-8080}
 echo "[entrypoint] noVNC websockify starting on port $PORT"
-
 websockify --web /usr/share/novnc 0.0.0.0:$PORT localhost:5900 &
 WEBSOCKIFY_PID=$!
 sleep 2
@@ -61,37 +60,63 @@ if kill -0 $WEBSOCKIFY_PID 2>/dev/null; then
     echo "Web UI: http://0.0.0.0:$PORT" >> "$STATUS_FILE"
 fi
 
-# Background: initialize wine prefix and launch MT5 from pre-installed files
+# Background: do everything else
 (
-    echo "[entrypoint-bg] Initializing wine prefix..."
+    echo "[entrypoint-bg] Initializing wine prefix (this takes ~30s)..."
     if command -v wine >/dev/null 2>&1; then
         DISPLAY=:0 wineboot --init 2>&1 | tail -3 || echo "[entrypoint-bg] wineboot init returned non-zero"
     fi
 
-    # Check pre-installed MT5
-    if [ -f /root/mt5-installed/terminal64.exe ]; then
-        echo "[entrypoint-bg] Found pre-installed MT5 at /root/mt5-installed/terminal64.exe"
-        echo "MT5: starting (pre-installed)" >> "$STATUS_FILE"
-        DISPLAY=:0 wine /root/mt5-installed/terminal64.exe &
-        echo "[entrypoint-bg] MT5 launched"
+    MT5_PATH="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe"
+
+    if [ -f "$MT5_PATH" ]; then
+        echo "[entrypoint-bg] MT5 already installed, launching..."
+        echo "MT5: starting" >> "$STATUS_FILE"
+        DISPLAY=:0 wine "$MT5_PATH" &
         echo "MT5: running" >> "$STATUS_FILE"
     else
-        echo "[entrypoint-bg] Pre-installed MT5 not found, falling back to silent install"
-        echo "MT5: pre-install missing, running silent install" >> "$STATUS_FILE"
+        echo "[entrypoint-bg] ============================================"
+        echo "[entrypoint-bg] MT5 not found, starting silent install"
+        echo "[entrypoint-bg] This takes 5-15 minutes on first run"
+        echo "[entrypoint-bg] Watch /status.txt for updates"
+        echo "[entrypoint-bg] ============================================"
+        echo "MT5 install: started (silent, no clicks needed)" >> "$STATUS_FILE"
+
+        # Run silent install - DON'T wait for it inline, run it in background
+        # and check periodically
         DISPLAY=:0 wine /root/mt5setup.exe /S 2>&1 | tail -3 &
         INSTALL_PID=$!
-        # Wait up to 5 min
-        for i in $(seq 1 150); do
-            if [ -f "/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe" ]; then
-                echo "[entrypoint-bg] MT5 installed via silent install"
+
+        # Wait up to 20 minutes for install to complete
+        for i in $(seq 1 240); do
+            if [ -f "$MT5_PATH" ]; then
+                echo "[entrypoint-bg] MT5 installed successfully after $((i*5))s"
+                echo "MT5: installed, launching..." >> "$STATUS_FILE"
+                # Wait a moment then launch
+                sleep 5
+                DISPLAY=:0 wine "$MT5_PATH" &
                 echo "MT5: running" >> "$STATUS_FILE"
                 break
             fi
-            sleep 2
+
+            # Also check if installer process still alive
+            if ! kill -0 $INSTALL_PID 2>/dev/null; then
+                echo "[entrypoint-bg] Installer process exited at $((i*5))s"
+                # If process exited but file not found, fail
+                if [ ! -f "$MT5_PATH" ]; then
+                    echo "[entrypoint-bg] MT5 not installed, trying GUI install"
+                    echo "MT5: silent install failed, attempting GUI" >> "$STATUS_FILE"
+                    # Last resort: launch GUI installer
+                    DISPLAY=:0 wine /root/mt5setup.exe &
+                    sleep 5
+                fi
+            fi
+            sleep 5
         done
-        # Launch
-        if [ -f "/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe" ]; then
-            DISPLAY=:0 wine "/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe" &
+
+        if [ ! -f "$MT5_PATH" ]; then
+            echo "[entrypoint-bg] WARNING: MT5 still not installed after 20 min"
+            echo "MT5: install timeout" >> "$STATUS_FILE"
         fi
     fi
 ) &
