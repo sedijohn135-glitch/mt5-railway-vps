@@ -18,6 +18,19 @@ if grep -q "could not load kernel32.dll" /tmp/wineboot.log; then
 fi
 rm -rf "$prefix.broken"   # kept by an earlier version of this script: GBs of the volume for nothing
 
+# The volume is 5 GB at most on Railway Hobby. What MT5 downloads again when it needs it goes at boot: tick caches,
+# the history of MetaQuotes-Demo (the server before the login) and Wine's installer cache. The biggest folders are
+# logged before and after.
+terminals="$prefix/drive_c/users/abc/AppData/Roaming/MetaQuotes/Terminal"
+usage() { du -xh -d 3 /config 2>/dev/null | sort -h | tail -n 10 | sed "s|^|[mt5-init] disk $1: |" >&2; }
+usage before
+rm -rf /config/.cache/wine
+if [ -d "$terminals" ]; then
+    find "$terminals" -mindepth 4 -maxdepth 4 -type d -path '*/bases/*/ticks' -exec rm -rf {} +
+    find "$terminals" -mindepth 3 -maxdepth 3 -type d -path '*/bases/MetaQuotes-Demo' -exec rm -rf {} +
+fi
+usage after
+
 # Startup config for MT5 (terminal64.exe /config:...): Algo Trading on, and the account login when
 # MT5_LOGIN, MT5_PASSWORD and MT5_SERVER are set. MT5 reads it as UTF-16LE.
 ini="${MT5_INI:-/config/mt5login.ini}"
