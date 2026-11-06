@@ -10,7 +10,8 @@ ENV MT5_CMD_OPTIONS='/config:Z:\config\mt5login.ini'
 # start.sh installs the MetaTrader5 Python package in Wine: the current one instead of 5.0.36 (2021).
 ENV MT5_PY_VERSION=5.0.6231
 RUN sed -i "s/^metatrader_version=.*/metatrader_version=\"$MT5_PY_VERSION\"/" /Metatrader/start.sh \
-    && grep -q "^metatrader_version=\"$MT5_PY_VERSION\"" /Metatrader/start.sh
+    && grep -q "^metatrader_version=\"$MT5_PY_VERSION\"" /Metatrader/start.sh \
+    && echo 'touch /tmp/mt5-ready' >> /Metatrader/start.sh
 
 # The image's own bridge (mt5linux) no longer starts: mt5linux 1.1.1 does not import on Python 3.11.
 COPY mt5-bridge.sh /custom-services.d/mt5-bridge
