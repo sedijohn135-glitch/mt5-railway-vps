@@ -4,7 +4,7 @@ prefix=/config/.wine
 
 # Make or update the Wine prefix (a new Wine version updates it) before anything else uses Wine: without a display
 # no window can block it, and neither Mono nor Gecko is asked for. A prefix where nothing runs ("could not load
-# kernel32.dll": a container stopped in the middle of a Wine update) is set aside and made again; start.sh then
+# kernel32.dll": a container stopped in the middle of a Wine update) is removed and made again; start.sh then
 # installs MT5 again and the login below logs it in.
 wineboot() {  # output to a file: Wine's background processes would keep a pipe open
     s6-setuidgid abc env -u DISPLAY HOME=/config WINEPREFIX="$prefix" WINEDEBUG=-all \
@@ -12,10 +12,11 @@ wineboot() {  # output to a file: Wine's background processes would keep a pipe 
 }
 wineboot
 if grep -q "could not load kernel32.dll" /tmp/wineboot.log; then
-    rm -rf "$prefix.broken" && mv "$prefix" "$prefix.broken"
-    echo "[mt5-init] broken Wine prefix moved to $prefix.broken: MT5 is installed again" >&2
+    rm -rf "$prefix"
+    echo "[mt5-init] broken Wine prefix removed: MT5 is installed again" >&2
     wineboot
 fi
+rm -rf "$prefix.broken"   # kept by an earlier version of this script: GBs of the volume for nothing
 
 # Startup config for MT5 (terminal64.exe /config:...): Algo Trading on, and the account login when
 # MT5_LOGIN, MT5_PASSWORD and MT5_SERVER are set. MT5 reads it as UTF-16LE.
