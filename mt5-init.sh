@@ -6,14 +6,15 @@ prefix=/config/.wine
 # no window can block it, and neither Mono nor Gecko is asked for. A prefix where nothing runs ("could not load
 # kernel32.dll": a container stopped in the middle of a Wine update) is set aside and made again; start.sh then
 # installs MT5 again and the login below logs it in.
-wineboot() {
+wineboot() {  # output to a file: Wine's background processes would keep a pipe open
     s6-setuidgid abc env -u DISPLAY HOME=/config WINEPREFIX="$prefix" WINEDEBUG=-all \
-        WINEDLLOVERRIDES="mscoree=d;mshtml=d" timeout 600 wine wineboot -u 2>&1
+        WINEDLLOVERRIDES="mscoree=d;mshtml=d" timeout 600 wine wineboot -u > /tmp/wineboot.log 2>&1
 }
-if wineboot | grep -q "could not load kernel32.dll"; then
+wineboot
+if grep -q "could not load kernel32.dll" /tmp/wineboot.log; then
     rm -rf "$prefix.broken" && mv "$prefix" "$prefix.broken"
     echo "[mt5-init] broken Wine prefix moved to $prefix.broken: MT5 is installed again" >&2
-    wineboot >/dev/null
+    wineboot
 fi
 
 # Startup config for MT5 (terminal64.exe /config:...): Algo Trading on, and the account login when
