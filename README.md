@@ -16,7 +16,7 @@ Volumi: `/config`. Aty ruhen MT5, Wine dhe hyrja në llogari, kështu që një r
 
 **Kujdes:** porta 8001 nuk hapet kurrë publikisht. Kushdo që e arrin mund të tregtojë në llogarinë tënde.
 
-Image-i bazë: [gmag11/MetaTrader5-Docker-Image](https://github.com/gmag11/MetaTrader5-Docker-Image) (Wine 10, KasmVNC, mt5linux).
+Image-i bazë: [gmag11/MetaTrader5-Docker-Image](https://github.com/gmag11/MetaTrader5-Docker-Image), me Wine 11 (WineHQ), sepse MT5 i sotëm nuk niset me Wine 10.
 
 ## Kontrolli
 
