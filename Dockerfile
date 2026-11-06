@@ -1,36 +1,11 @@
-FROM ubuntu:20.04
+# MT5 for Railway: MetaTrader 5 on Wine 10, a password-protected screen in the browser (port 3000)
+# and the MetaTrader5 Python bridge for the bots (mt5linux, port 8001, private network only).
+# Image: https://github.com/gmag11/MetaTrader5-Docker-Image
+FROM gmag11/metatrader5_vnc:2.3
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV DISPLAY=:0
-ENV WINEPREFIX=/root/.wine
-ENV WINEDEBUG=-all
+# MT5 logs in by itself from MT5_LOGIN / MT5_PASSWORD / MT5_SERVER and starts with Algo Trading on.
+COPY mt5-login.sh /custom-cont-init.d/50-mt5-login
+ENV MT5_CMD_OPTIONS='/config:Z:\config\mt5login.ini'
 
-# Install all dependencies
-RUN dpkg --add-architecture i386 && \
-    apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        software-properties-common \
-        wget curl ca-certificates \
-        xvfb x11vnc novnc websockify \
-        fluxbox xterm unzip cabextract x11-utils \
-        xdotool scrot p7zip-full \
-        wine && \
-    rm -rf /var/lib/apt/lists/*
-
-# Verify wine is actually installed
-RUN wine --version 2>&1 | head -3
-
-# Make noVNC default page point to the lightweight vnc client
-RUN ln -sf /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
-
-# Download MetaTrader 5 installer
-RUN wget -q -O /root/mt5setup.exe \
-    "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe"
-
-# Copy entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-EXPOSE 8080
-
-CMD ["/entrypoint.sh"]
+# The screen controls a trading account: never start it without a password.
+ENTRYPOINT ["/bin/sh", "-c", "[ -n \"$PASSWORD\" ] || { echo 'PASSWORD missing: set it in Railway Variables' >&2; exit 1; }; exec /init"]
