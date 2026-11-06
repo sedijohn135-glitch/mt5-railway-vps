@@ -24,7 +24,7 @@ ini="${MT5_INI:-/config/mt5login.ini}"
     if [ -n "$MT5_LOGIN" ] && [ -n "$MT5_PASSWORD" ] && [ -n "$MT5_SERVER" ]; then
         printf '[Common]\r\nLogin=%s\r\nPassword=%s\r\nServer=%s\r\nKeepPrivate=1\r\nNewsEnable=0\r\n' \
             "$MT5_LOGIN" "$MT5_PASSWORD" "$MT5_SERVER"
-        echo "[mt5-init] account $MT5_LOGIN on $MT5_SERVER" >&2
+        echo "[mt5-init] login from MT5_LOGIN, MT5_PASSWORD, MT5_SERVER" >&2  # never their values in the logs
     else
         echo "[mt5-init] MT5_LOGIN/MT5_PASSWORD/MT5_SERVER not set: log in from the MT5 screen" >&2
     fi

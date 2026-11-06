@@ -14,6 +14,10 @@ MetaTrader 5 që punon 24/7 në Railway, pa kompjuter dhe pa MetaApi.
 
 Volumi: `/config`. Aty ruhen MT5, Wine dhe hyrja në llogari, kështu që një restart nuk e instalon MT5 nga e para.
 
+**Nëse MT5 nuk lidhet** (titulli s'ka "Demo Account"/"Real Account", Journal-i s'ka "authorized"): MT5 i MetaQuotes nuk e
+njeh serverin e brokerit. Një herë në ekran: File → Open an Account → shkruaj serverin (p.sh. `ICMarketsSC-Demo`) →
+Find your company → Cancel. MT5 lidhet vetë dhe e mban serverin në volum.
+
 **Kujdes:** porta 8001 nuk hapet kurrë publikisht. Kushdo që e arrin mund të tregtojë në llogarinë tënde.
 
 Image-i bazë: [gmag11/MetaTrader5-Docker-Image](https://github.com/gmag11/MetaTrader5-Docker-Image), me Wine 11 (WineHQ), sepse MT5 i sotëm nuk niset me Wine 10.
