@@ -3,7 +3,7 @@
 MetaTrader 5 që punon 24/7 në Railway, pa kompjuter dhe pa MetaApi.
 
 - **Ekrani i MT5** (edhe nga telefoni): domain-i i shërbimit `mt5` në Railway, me përdoruesin `CUSTOM_USER` dhe fjalëkalimin `PASSWORD`.
-- **Botët** lidhen me MT5 te `mt5.railway.internal:8001` (librari `mt5linux`), vetëm brenda rrjetit privat të Railway.
+- **Botët** lidhen me MT5 te `mt5.railway.internal:8001` (API-ja zyrtare MetaTrader5 përmes RPyC), vetëm brenda rrjetit privat të Railway.
 
 ## Variablat (Railway → mt5 → Variables)
 
