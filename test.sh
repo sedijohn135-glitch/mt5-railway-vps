@@ -1,11 +1,11 @@
 #!/bin/sh
-# Check of mt5-login.sh: sh test.sh
+# Check of mt5-init.sh: sh test.sh
 set -e
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 run() {
     rm -f "$dir/mt5.ini"
-    env -i PATH="$PATH" MT5_INI="$dir/mt5.ini" "$@" bash mt5-login.sh 2>/dev/null
+    env -i PATH="$PATH" MT5_INI="$dir/mt5.ini" "$@" bash mt5-init.sh 2>/dev/null
     iconv -f UTF-16 -t UTF-8 "$dir/mt5.ini" | tr -d '\r'
 }
 fail() { echo "FAIL: $1"; exit 1; }

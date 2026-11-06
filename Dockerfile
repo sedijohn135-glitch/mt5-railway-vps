@@ -3,13 +3,19 @@
 # Image: https://github.com/gmag11/MetaTrader5-Docker-Image
 FROM gmag11/metatrader5_vnc:2.3
 
-# MT5 logs in by itself from MT5_LOGIN / MT5_PASSWORD / MT5_SERVER and starts with Algo Trading on.
-COPY mt5-login.sh /custom-cont-init.d/50-mt5-login
+# MT5 does not use .NET: no Wine process asks for Mono (its install dialog blocked every Wine process).
+ENV WINEDLLOVERRIDES=mscoree=d
+
+# Container start: repairs a broken Wine prefix, then MT5 logs in by itself from MT5_LOGIN / MT5_PASSWORD /
+# MT5_SERVER and starts with Algo Trading on.
+COPY mt5-init.sh /custom-cont-init.d/50-mt5-init
 ENV MT5_CMD_OPTIONS='/config:Z:\config\mt5login.ini'
 
-# start.sh installs the MetaTrader5 Python package in Wine: the current one instead of 5.0.36 (2021).
+# start.sh: no Mono, the current MetaTrader5 Python package instead of 5.0.36 (2021), and a marker when it is done.
 ENV MT5_PY_VERSION=5.0.6231
-RUN sed -i "s/^metatrader_version=.*/metatrader_version=\"$MT5_PY_VERSION\"/" /Metatrader/start.sh \
+RUN sed -i 's|^if \[ ! -e "/config/.wine/drive_c/windows/mono" \]; then|if false; then|' /Metatrader/start.sh \
+    && sed -i "s/^metatrader_version=.*/metatrader_version=\"$MT5_PY_VERSION\"/" /Metatrader/start.sh \
+    && grep -q '^if false; then' /Metatrader/start.sh \
     && grep -q "^metatrader_version=\"$MT5_PY_VERSION\"" /Metatrader/start.sh \
     && echo 'touch /tmp/mt5-ready' >> /Metatrader/start.sh
 
