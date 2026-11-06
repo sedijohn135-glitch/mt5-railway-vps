@@ -18,20 +18,17 @@ if grep -q "could not load kernel32.dll" /tmp/wineboot.log; then
 fi
 rm -rf "$prefix.broken"   # kept by an earlier version of this script: GBs of the volume for nothing
 
-# The volume is 5 GB at most on Railway Hobby. What MT5 downloads again when it needs it goes at boot: tick caches,
-# the history of MetaQuotes-Demo (the server before the login), temp folders, Wine's installer cache, and the Python
-# (C:\Py64) and installer cache an earlier version of this image put in the prefix (the bridge uses /opt/winpython).
-# The biggest folders are logged before and after.
-terminals="$prefix/drive_c/users/abc/AppData/Roaming/MetaQuotes/Terminal"
-usage() { du -xh -d "$2" /config 2>/dev/null | sort -h | tail -n "$3" | sed "s|^|[mt5-init] disk $1: |" >&2; }
-usage before 3 3
-rm -rf /config/.cache/wine "$prefix/drive_c/Py64" "$prefix/drive_c/ProgramData/Package Cache"
-rm -rf "$prefix/drive_c/windows/temp/"* "$prefix/drive_c/users/abc/AppData/Local/Temp/"* 2>/dev/null
-if [ -d "$terminals" ]; then
-    find "$terminals" -mindepth 4 -maxdepth 4 -type d -path '*/bases/*/ticks' -exec rm -rf {} +
-    find "$terminals" -mindepth 3 -maxdepth 3 -type d -path '*/bases/MetaQuotes-Demo' -exec rm -rf {} +
-fi
-usage after 6 25
+# The volume is 5 GB at most on Railway Hobby. What MT5 downloads again when it needs it goes at boot (tick caches,
+# the history of MetaQuotes-Demo, the server before the login), with the temp folders, Wine's installer cache and the
+# Pythons that earlier versions of this image installed (the bridge runs on /opt/winpython). Disk use goes to the log.
+bases="$prefix/drive_c/Program Files/MetaTrader 5/Bases"
+usage() { du -xh -d 6 /config 2>/dev/null | sort -h | tail -n "$2" | sed "s|^|[mt5-init] disk $1: |" >&2; }
+usage before 1
+rm -rf /config/.cache/wine /config/.local/lib/python3.* "${prefix:?}/drive_c/Py64" \
+    "${prefix:?}/drive_c/Program Files (x86)/Python39-32" "${prefix:?}/drive_c/ProgramData/Package Cache" \
+    "${bases:?}/MetaQuotes-Demo" "${bases:?}/"*/ticks
+rm -rf "${prefix:?}/drive_c/windows/temp/"* "${prefix:?}/drive_c/users/abc/AppData/Local/Temp/"* 2>/dev/null
+usage after 8
 
 # Startup config for MT5 (terminal64.exe /config:...): Algo Trading on, and the account login when
 # MT5_LOGIN, MT5_PASSWORD and MT5_SERVER are set. MT5 reads it as UTF-16LE.
