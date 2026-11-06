@@ -11,15 +11,16 @@ ENV WINEDLLOVERRIDES=mscoree=d
 COPY mt5-init.sh /custom-cont-init.d/50-mt5-init
 ENV MT5_CMD_OPTIONS='/config:Z:\config\mt5login.ini'
 
-# start.sh: no Mono, the current MetaTrader5 Python package instead of 5.0.36 (2021), and a marker when it is done.
-ENV MT5_PY_VERSION=5.0.6231
+# start.sh installs and starts MT5, without Mono, then stops: its Python part is replaced by mt5-bridge.sh
+# (it installed a 32-bit Python, which current MetaTrader5 packages do not support, and its mt5linux server
+# no longer starts: mt5linux 1.1.1 does not import on Python 3.11).
 RUN sed -i 's|^if \[ ! -e "/config/.wine/drive_c/windows/mono" \]; then|if false; then|' /Metatrader/start.sh \
-    && sed -i "s/^metatrader_version=.*/metatrader_version=\"$MT5_PY_VERSION\"/" /Metatrader/start.sh \
+    && sed -i 's|^# Install Python in Wine if not present|touch /tmp/mt5-ready; exit 0\n&|' /Metatrader/start.sh \
     && grep -q '^if false; then' /Metatrader/start.sh \
-    && grep -q "^metatrader_version=\"$MT5_PY_VERSION\"" /Metatrader/start.sh \
-    && echo 'touch /tmp/mt5-ready' >> /Metatrader/start.sh
+    && grep -q '^touch /tmp/mt5-ready; exit 0' /Metatrader/start.sh
 
-# The image's own bridge (mt5linux) no longer starts: mt5linux 1.1.1 does not import on Python 3.11.
+# The bridge for the bots: the MetaTrader5 package of MetaQuotes, served over RPyC on port 8001.
+ENV MT5_PY_VERSION=5.0.6231
 COPY mt5-bridge.sh /custom-services.d/mt5-bridge
 
 # The screen controls a trading account: never start it without a password.
